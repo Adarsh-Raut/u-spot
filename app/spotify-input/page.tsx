@@ -4,6 +4,7 @@ import { useState } from "react";
 import SpotifyInput from "@/app/components/input";
 import ConversionProgress from "@/app/components/progress";
 import Image from "next/image";
+import Link from "next/link";
 
 interface Track {
   name: string;
@@ -166,6 +167,17 @@ export default function SpotifyToYouTube() {
             </div>
           </div>
         </div>
+      )}
+      {playlistData && (
+        <Link
+          href={{
+            pathname: "/youtube",
+            query: { data: encodeURIComponent(JSON.stringify(playlistData)) },
+          }}
+          className="btn btn-primary mt-4"
+        >
+          Go to YouTube Playlist Component
+        </Link>
       )}
     </div>
   );
