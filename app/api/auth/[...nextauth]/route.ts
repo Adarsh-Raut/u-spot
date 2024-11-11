@@ -24,7 +24,11 @@ export const authOptions: AuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: "https://www.googleapis.com/auth/youtube",
+          scope: "openid email profile https://www.googleapis.com/auth/youtube",
+          response_type: "code",
+          access_type: "offline",
+          prompt: "consent",
+
         },
       },
     }),

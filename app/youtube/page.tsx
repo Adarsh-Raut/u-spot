@@ -23,9 +23,8 @@ export default function YouTubePlaylists() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log(session?.user.accessToken); // Add this line to log the access token to the console
     const fetchPlaylists = async () => {
-      if (!session?.user.accessToken) {
+      if (!session?.user?.accessToken) {
         setError("No access token available");
         setLoading(false);
         return;
@@ -42,14 +41,20 @@ export default function YouTubePlaylists() {
         );
 
         if (!response.ok) {
-          throw new Error("Failed to fetch playlists");
+          throw new Error(`Error: ${response.status} - ${response.statusText}`);
         }
 
         const data = await response.json();
-        setPlaylists(data.items);
+
+        // Check if playlists exist in the data structure
+        if (data.items) {
+          setPlaylists(data.items);
+        } else {
+          setError("No playlists found");
+        }
       } catch (err) {
         setError("Error fetching playlists");
-        console.error(err);
+        console.error("Fetching playlists failed", err);
       } finally {
         setLoading(false);
       }
@@ -59,7 +64,7 @@ export default function YouTubePlaylists() {
   }, [session]);
 
   const handleCreatePlaylist = async () => {
-    if (!session?.user.accessToken) {
+    if (!session?.user?.accessToken) {
       setError("No access token available");
       return;
     }
@@ -83,14 +88,14 @@ export default function YouTubePlaylists() {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to create playlist");
+        throw new Error(`Error creating playlist: ${response.statusText}`);
       }
 
       const newPlaylist = await response.json();
-      setPlaylists([...playlists, newPlaylist]);
+      setPlaylists((prevPlaylists) => [...prevPlaylists, newPlaylist]);
     } catch (err) {
       setError("Error creating playlist");
-      console.error(err);
+      console.error("Creating playlist failed", err);
     }
   };
 
@@ -98,27 +103,6 @@ export default function YouTubePlaylists() {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="loading loading-spinner loading-lg"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="alert alert-error">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="stroke-current shrink-0 h-6 w-6"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-        <span>{error}</span>
       </div>
     );
   }
