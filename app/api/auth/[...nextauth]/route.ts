@@ -8,9 +8,10 @@ const prisma = new PrismaClient()
 // Extend the built-in session type
 declare module "next-auth" {
   interface Session extends DefaultSession {
-    user: {
-      id: string;
-      // Add any other properties you want to include
+      user: {
+          id: string;
+          accessToken: string
+     
     } & DefaultSession["user"]
   }
 }
@@ -21,6 +22,11 @@ export const authOptions: AuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope: "https://www.googleapis.com/auth/youtube",
+        },
+      },
     }),
   ],
   secret: process.env.NEXTAUTH_SECRET,
@@ -39,6 +45,7 @@ export const authOptions: AuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.userId as string;
+        session.user.accessToken = token.accessToken as string
       }
       return session;
     },
