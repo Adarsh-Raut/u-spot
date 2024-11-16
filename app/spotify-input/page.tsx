@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SpotifyInput from "@/app/components/input";
 import ConversionProgress from "@/app/components/progress";
 import Image from "next/image";
-import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 interface Track {
   name: string;
   artists: string[];
   album: string;
   albumImage: string;
+  status: "pending" | "found" | "not found" | "added" | "error";
+  message: string;
 }
 
 interface PlaylistData {
@@ -22,6 +24,7 @@ interface PlaylistData {
 }
 
 export default function SpotifyToYouTube() {
+  const { data: session } = useSession();
   const clientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_SECRET;
 
@@ -30,6 +33,9 @@ export default function SpotifyToYouTube() {
   );
   const [playlistData, setPlaylistData] = useState<PlaylistData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [youtubePlaylistId, setYoutubePlaylistId] = useState<string | null>(
+    null
+  );
 
   const getAccessToken = async () => {
     const response = await fetch("https://accounts.spotify.com/api/token", {
@@ -66,7 +72,6 @@ export default function SpotifyToYouTube() {
     }
 
     const data = await response.json();
-    console.log(data);
     return {
       name: data.name,
       description: data.description,
@@ -77,9 +82,131 @@ export default function SpotifyToYouTube() {
         artists: item.track.artists.map((artist: any) => artist.name),
         album: item.track.album.name,
         albumImage:
-          item.track.album.images[item.track.album.images.length - 1]?.url, // Get smallest image
+          item.track.album.images[item.track.album.images.length - 1]?.url,
+        status: "pending",
+        message: "",
       })),
     };
+  };
+
+  const createYouTubePlaylist = async () => {
+    if (!session?.user?.accessToken) {
+      setError("No YouTube access token available");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "https://www.googleapis.com/youtube/v3/playlists?part=snippet",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.user.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            snippet: {
+              title: playlistData?.name || "New Playlist",
+              description: playlistData?.description || "Created via app",
+            },
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        console.error("Error creating playlist:", data);
+        throw new Error(
+          `Error creating YouTube playlist: ${data.error.message}`
+        );
+      }
+
+      console.log("Created playlist:", data); // Log the full response for debugging
+      setYoutubePlaylistId(data.id); // Ensure this is correctly set
+      return data.id;
+    } catch (err) {
+      console.error(err);
+      setError("Failed to create YouTube playlist");
+    }
+  };
+
+  const addAllTracksToYouTubePlaylist = async () => {
+    console.log(youtubePlaylistId);
+    let yTubePlaylistId = youtubePlaylistId;
+
+    if (!yTubePlaylistId) {
+      yTubePlaylistId = await createYouTubePlaylist();
+      console.log(yTubePlaylistId);
+      if (!yTubePlaylistId) {
+        setError("Failed to create or fetch YouTube playlist ID");
+        return;
+      }
+    }
+
+    for (const track of playlistData?.tracks || []) {
+      try {
+        const searchResponse = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(
+            `${track.name} ${track.artists.join(" ")}`
+          )}&type=video&maxResults=1`,
+          {
+            headers: {
+              Authorization: `Bearer ${session?.user?.accessToken}`,
+            },
+          }
+        );
+
+        if (!searchResponse.ok) {
+          throw new Error(`Error searching for track: ${track.name}`);
+        }
+
+        const searchData = await searchResponse.json();
+        const videoId = searchData.items[0]?.id?.videoId;
+
+        if (videoId) {
+          await fetch(
+            "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${session?.user.accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                snippet: {
+                  playlistId: yTubePlaylistId,
+                  resourceId: {
+                    kind: "youtube#video",
+                    videoId: videoId,
+                  },
+                },
+              }),
+            }
+          );
+
+          track.status = "added";
+          track.message = "Added to YouTube playlist";
+        } else {
+          track.status = "not found";
+          track.message = "Video not found on YouTube";
+        }
+      } catch (err) {
+        track.status = "error";
+        track.message = "Error adding to YouTube";
+        console.error(err);
+      }
+
+      setPlaylistData((prevData) =>
+        prevData
+          ? {
+              ...prevData,
+              tracks: prevData.tracks.map((t) =>
+                t.name === track.name ? track : t
+              ),
+            }
+          : null
+      );
+    }
   };
 
   const handleConvert = async (url: string) => {
@@ -160,24 +287,34 @@ export default function SpotifyToYouTube() {
                       <p className="text-sm text-base-content/70 truncate">
                         {track.artists.join(", ")} • {track.album}
                       </p>
+                      <p className="text-sm mt-1">
+                        Status:{" "}
+                        <span
+                          className={
+                            track.status === "added"
+                              ? "text-green-600"
+                              : track.status === "error"
+                              ? "text-red-600"
+                              : "text-yellow-600"
+                          }
+                        >
+                          {track.message}
+                        </span>
+                      </p>
                     </div>
                   </li>
                 ))}
               </ul>
+
+              <button
+                className="btn btn-primary mt-6"
+                onClick={addAllTracksToYouTubePlaylist}
+              >
+                Add All to YouTube
+              </button>
             </div>
           </div>
         </div>
-      )}
-      {playlistData && (
-        <Link
-          href={{
-            pathname: "/youtube",
-            query: { data: encodeURIComponent(JSON.stringify(playlistData)) },
-          }}
-          className="btn btn-primary mt-4"
-        >
-          Go to YouTube Playlist Component
-        </Link>
       )}
     </div>
   );
